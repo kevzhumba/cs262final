@@ -78,7 +78,7 @@ object CfgProcessor {
                 ).toList)
               )
               .toList
-
+          //register all items in hashcons
           val methodDescription = toMethodDescription(method, code.params.parameters(0) eq null)
           for (bb <- cfg.allBBs.toList ++ List(cfg.abnormalReturnNode, cfg.normalReturnNode) ++ cfg.catchNodes) {
             val ret = if (bb.isBasicBlock) tac.get(method.definedMethod)
@@ -90,6 +90,18 @@ object CfgProcessor {
               CfgNodeFactory.createNode(Some(bb), methodDescription, true, unrwrapinstructions = List(ret.last))
             }
           }
+          // Add local preds
+          for (bb <- cfg.allBBs.toList ++ List(cfg.abnormalReturnNode, cfg.normalReturnNode) ++ cfg.catchNodes) {
+            val ret = if (bb.isBasicBlock) tac.get(method.definedMethod)
+              .instructions
+              .slice(bb.asBasicBlock.startPC, bb.asBasicBlock.endPC + 1)
+              .toList else List()
+            val node = CfgNodeFactory.createNode(Some(bb), methodDescription, unrwrapinstructions = ret)
+            nodeSet += node
+            predecessors += (node.id -> (predecessors.getOrElse(node.id, Set()) ++ bb.predecessors.map(p => CfgNodeFactory.createNode(Some(p), methodDescription))))
+            successors += (node.id -> (successors.getOrElse(node.id, Set()) ++ bb.successors.map(s => CfgNodeFactory.createNode(Some(s), methodDescription))))
+          }
+          //Add call returns
           for (bb <- cfg.allBBs.toList ++ List(cfg.abnormalReturnNode, cfg.normalReturnNode) ++ cfg.catchNodes) { //TODO add catch nodes
             val ret = if (bb.isBasicBlock) tac.get(method.definedMethod)
               .instructions
@@ -100,15 +112,12 @@ object CfgProcessor {
               val callRet = CfgNodeFactory.createNode(Some(bb), methodDescription, true, unrwrapinstructions = List(ret.last))
               nodeSet += node
               nodeSet += callRet
-              //fix this
-              predecessors += (node.id -> (predecessors.getOrElse(node.id, Set()) ++ bb.predecessors.map(p => CfgNodeFactory.createNode(Some(p), methodDescription))))
+              //replace the call nodes successors with call ret
+              //replace
+              successors += (callRet.id -> successors(node.id))
+              successors(node.id).foreach(s => predecessors += (s.id -> (predecessors(s.id) - node + callRet)))
               predecessors += (callRet.id -> Set(node))
               successors += (node.id -> Set(callRet))
-              successors += (callRet.id -> (successors.getOrElse(node.id, Set()) ++ bb.successors.map(s => CfgNodeFactory.createNode(Some(s), methodDescription))))
-            } else {
-              nodeSet += node
-              predecessors += (node.id -> (predecessors.getOrElse(node.id, Set()) ++ bb.predecessors.map(p => CfgNodeFactory.createNode(Some(p), methodDescription))))
-              successors += (node.id -> (successors.getOrElse(node.id, Set()) ++ bb.successors.map(s => CfgNodeFactory.createNode(Some(s), methodDescription))))
             }
           }
           result += (methodDescription -> ExplodedCfg(nodeSet.find(p => p.isEntry).get, nodeSet, predecessors, successors, callers, callees))

@@ -10,6 +10,7 @@ service DataflowServer {
   rpc GetHeartbeat (GetHeartbeatRequest) returns (GetHeartbeatResponse) {}
   rpc ReceiveComputationUnit (ReceiveComputationUnitRequest) returns (ReceiveComputationUnitResponse) {}
   rpc SetTrigger (SetTriggerRequest) returns (SetTriggerResponse) {}
+  rpc ShutDown (ShutDownRequest) returns (ShutDownResponse) {}
 }
 
 // The request message containing the user's name.

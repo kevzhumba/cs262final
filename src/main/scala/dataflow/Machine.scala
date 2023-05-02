@@ -8,9 +8,9 @@ import lattice.{Constant, ConstantOperator, Value, ValueOperator}
 import org.opalj.br.DeclaredMethod
 import org.opalj.br.cfg.CFG
 import org.opalj.tac.fpcf.properties.cg.Callers
-import protos.dataflow.{DataflowServerGrpc, GetCalleeInfoRequest, GetCalleeInfoResponse, GetCallerInfoRequest, GetCallerInfoResponse, GetHeartbeatRequest, GetHeartbeatResponse, ReceiveComputationUnitRequest, ReceiveComputationUnitResponse, SetTriggerRequest, SetTriggerResponse}
+import protos.dataflow.{DataflowServerGrpc, GetCalleeInfoRequest, GetCalleeInfoResponse, GetCallerInfoRequest, GetCallerInfoResponse, GetHeartbeatRequest, GetHeartbeatResponse, ReceiveComputationUnitRequest, ReceiveComputationUnitResponse, SetTriggerRequest, SetTriggerResponse, ShutDownRequest, ShutDownResponse}
 
-import scala.collection.mutable
+import scala.collection.{mutable}
 import scala.concurrent.{ExecutionContext, Future}
 import org.json4s._
 import org.json4s.DefaultFormats
@@ -20,6 +20,7 @@ import org.json4s.native.Serialization.{read, write}
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
+import scala.util.control.Breaks.{break, breakable}
 
 case class DataflowProblem[V <: Value](analysis: Analysis)
 
@@ -46,15 +47,17 @@ class Machine(val host: String, val port: Int) {
   var cfg: ExplodedCfg = null
   var change: Boolean = true
   var waiting: AtomicBoolean = new AtomicBoolean(false)
+  val heartBeat: AtomicBoolean = new AtomicBoolean(false)
   val calleeStubs: ConcurrentMap[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = new ConcurrentHashMap()
   val callerStubs: ConcurrentMap[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = new ConcurrentHashMap()
   var valueOperator: ValueOperator = null
   var analysis: Analysis = null
+  val endFlag: AtomicBoolean = new AtomicBoolean(false)
 
   private class MachineServer extends protos.dataflow.DataflowServerGrpc.DataflowServer {
 
-    override def getHeartbeat(request: GetHeartbeatRequest): Future[GetHeartbeatResponse] = {
-      Future.successful(GetHeartbeatResponse(waiting.get() && !change))
+    override def getHeartbeat(request: GetHeartbeatRequest): Future[GetHeartbeatResponse] = { //TODO make this more robust
+      Future.successful(GetHeartbeatResponse(heartBeat.get()))
     }
 
     override def getCallerInfo(request: GetCallerInfoRequest): Future[GetCallerInfoResponse] = {
@@ -95,6 +98,17 @@ class Machine(val host: String, val port: Int) {
     override def setTrigger(request: SetTriggerRequest): Future[SetTriggerResponse] = {
       waiting.set(false)
       Future.successful(SetTriggerResponse())
+    }
+
+    override def shutDown(request: ShutDownRequest): Future[ShutDownResponse] = {
+      var map: Map[Int, Value] = Map()
+      for (node <- cfg.nodes) {
+        val lattice = out.get(node)
+        map += (node.id -> lattice.asInstanceOf[Constant])
+      }
+      val json = write(map)
+      endFlag.set(true)
+      Future.successful(ShutDownResponse("constant", json))
     }
   }
 
@@ -147,12 +161,19 @@ class Machine(val host: String, val port: Int) {
 
   def handleComputation() = {
     val rpo = reversePostOrder(cfg)
-    while (true) {
-      if (!waiting.getAndSet(true)) {
-        change = true
-        converge(rpo)
+    breakable {
+      while (true) {
+        if (!waiting.getAndSet(true)) {
+          change = true
+          heartBeat.set(false)
+          converge(rpo)
+          heartBeat.set(true)
+        }
+        if (endFlag.get()) {
+          break()
+        }
+        Thread.sleep(500)
       }
-      Thread.sleep(500)
     }
   }
 

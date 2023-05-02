@@ -2,12 +2,13 @@ import cfg.{Assignment, BBEntryNode, BBNode, BinExpr, BinOps, CRNode, CfgNode, C
 import cli.CliParser
 import dataflow.{ComputationUnit, Machine}
 import io.grpc.netty.NettyChannelBuilder
+import lattice.Constant
 import org.json4s.{DefaultFormats, FieldSerializer, ShortTypeHints}
 import org.json4s.native.Serialization
 import org.json4s.native.Serialization.{read, write}
 import org.opalj.br.ObjectType
 import org.opalj.tac.cg.CFA_1_1_CallGraphKey
-import protos.dataflow.{DataflowServerGrpc, GetHeartbeatRequest, ReceiveComputationUnitRequest}
+import protos.dataflow.{DataflowServerGrpc, GetHeartbeatRequest, ReceiveComputationUnitRequest, ShutDownRequest}
 import protos.dataflow.DataflowServerGrpc.{DataflowServerBlockingStub, stub}
 
 
@@ -59,9 +60,17 @@ object Main extends App {
         stubs = stubs ++ List(blockingStub)
         blockingStub.receiveComputationUnit(ReceiveComputationUnitRequest(json))
       }
-      while(true) {
-
+      var i = 0
+      while(i < 5) {
+        if (stubs.forall(stub => stub.getHeartbeat(GetHeartbeatRequest()).converged)){
+          i = i + 1
+        } else {
+          i = 0
+        }
+        Thread.sleep(1000)
       }
+      val results = stubs.map(stub => stub.shutDown(ShutDownRequest()).payload)
+      println(results.map(json => read[Map[Int,Constant]](json)))
       // println(PrettyPrinter.prettyPrint(cfg.successors))
     case None =>
   }
