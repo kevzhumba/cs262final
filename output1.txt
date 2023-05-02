@@ -1,0 +1,6 @@
+[info] welcome to sbt 1.8.2 (Homebrew Java 11.0.16.1)
+[info] loading global plugins from /Users/kevinzhang/.sbt/1.0/plugins
+[info] loading project definition from /Users/kevinzhang/hw/cs262final/project
+[error] sbt.compiler.EvalException: Type error in expression
+[error] Use 'last' for the full log.
+[warn] Project loading failed: (r)etry, (q)uit, (l)ast, or (i)gnore? (default: r)

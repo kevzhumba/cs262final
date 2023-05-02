@@ -1,0 +1,26 @@
+[0m[[0m[0mdebug[0m] [0m[0mCreated transactional ClassFileManager with tempDir = /Users/kevinzhang/hw/cs262final/target/scala-2.13/classes.bak[0m
+[0m[[0m[0mdebug[0m] [0m[0mAbout to delete class files:[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	ComputationUnit.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	ComputationUnit$.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	DataflowProblem.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine$$anon$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine$MachineServer.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	DataflowProblem$.class[0m
+[0m[[0m[0mdebug[0m] [0m[0mWe backup class files:[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	ComputationUnit.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	ComputationUnit$.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	DataflowProblem.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine$$anon$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine$MachineServer.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	DataflowProblem$.class[0m
+[0m[[0m[0mdebug[0m] [0m[0mRegistering generated classes:[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	ComputationUnit.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	ComputationUnit$.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	DataflowProblem.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine$$anon$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	Machine$MachineServer.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	DataflowProblem$.class[0m
+[0m[[0m[0mdebug[0m] [0m[0mRemoving the temporary directory used for backing up class files: /Users/kevinzhang/hw/cs262final/target/scala-2.13/classes.bak[0m

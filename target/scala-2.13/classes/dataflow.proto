@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package protos;
+
+// The greeting service definition.
+service DataflowServer {
+  // Sends a greeting
+  rpc GetCallerInfo (GetCallerInfoRequest) returns (GetCallerInfoResponse) {}
+  rpc GetCalleeInfo (GetCalleeInfoRequest) returns (GetCalleeInfoResponse) {}
+  rpc GetHeartbeat (GetHeartbeatRequest) returns (GetHeartbeatResponse) {}
+  rpc ReceiveComputationUnit (ReceiveComputationUnitRequest) returns (ReceiveComputationUnitResponse) {}
+  rpc SetTrigger (SetTriggerRequest) returns (SetTriggerResponse) {}
+}
+
+// The request message containing the user's name.
+message GetCallerInfoRequest {
+  string lattice = 1; // the type of lattice
+  int32 caller = 2; // the idx of caller instruction
+}
+
+// The response message containing the greetings
+message GetCallerInfoResponse {
+  string lattice = 1;
+  string payload = 2;
+}
+
+message GetCalleeInfoRequest {
+  string lattice = 1;
+}
+
+message GetCalleeInfoResponse {
+  string lattice = 1;
+  string payload = 2;
+}
+
+message GetHeartbeatRequest {
+}
+
+message GetHeartbeatResponse {
+  bool converged = 1;
+}
+
+message ReceiveComputationUnitRequest {
+  string computationunit = 1;
+}
+
+message ReceiveComputationUnitResponse {
+
+}
+
+message SetTriggerRequest {
+  bool on = 1;
+}
+
+message SetTriggerResponse {
+  
+}
+
+message ShutDownRequest {
+
+}
+
+message ShutDownResponse {
+  string lattice = 1;
+  string payload = 2;
+}
