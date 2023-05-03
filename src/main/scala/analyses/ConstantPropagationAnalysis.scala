@@ -174,9 +174,10 @@ object ConstantPropagationAnalysis extends Analysis {
       case ReadField(declaringClass, name, declaredFieldType, objRef) =>
         val obj = evalExpr(objRef, isCallRet, in, stmtNode, stubs)._1._2
         var value = defaultFieldValue
+        val method = write(stmtNode.method)
         for (alloc <- obj.sites) {
           val allocJson = write(alloc)
-          val response = stubs(alloc.method).getField(GetFieldRequest(allocJson, name))
+          val response = stubs(alloc.method).getField(GetFieldRequest(allocJson, name, method))
           value = ConstantOperator.joinTuples(value, read[(Integer, AbstractObject)](response.value))
         }
         value

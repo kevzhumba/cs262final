@@ -40,6 +40,7 @@ class Machine(val host: String, val port: Int) {
 
   //Points to state: these should be allocation sites that were allocated in this method
   val pointsTo: ConcurrentMap[(AllocationSite, String), (lattice.Integer, AbstractObject)] = new ConcurrentHashMap()
+  //Map from allocation site to reader? hmmmm that seems reasonable
 
   var method: MethodDescription = null
   var cfg: ExplodedCfg = null
@@ -50,10 +51,14 @@ class Machine(val host: String, val port: Int) {
   var valueOperator: ValueOperator = null
   var analysis: Analysis = null
   val endFlag: AtomicBoolean = new AtomicBoolean(false)
+  val readers: ConcurrentMap[(AllocationSite, String), Set[MethodDescription]] = new ConcurrentHashMap()
 
   private class MachineServer extends protos.dataflow.DataflowServerGrpc.DataflowServer {
     override def getField(request: GetFieldRequest): Future[GetFieldResponse] = {
-      val value = pointsTo.getOrDefault((read[AbstractObject](request.allocSite), request.field), analysis.defaultFieldValue)
+      val alloc = read[AllocationSite](request.allocSite)
+      val value = pointsTo.getOrDefault((alloc, request.field), analysis.defaultFieldValue)
+      val method = read[MethodDescription](request.requestingMethod)
+      readers.compute((alloc, request.field), (k, v) => if (v == null) Set(method) else v + method)
       val json = write(value)
       Future.successful(GetFieldResponse(json))
     }
@@ -65,6 +70,7 @@ class Machine(val host: String, val port: Int) {
       pointsTo.compute(
         (allocationSite, field),
         (k, v) => if (v == null) ConstantOperator.joinTuples(value, analysis.defaultFieldValue) else ConstantOperator.joinTuples(v, value))
+      readers.getOrDefault((allocationSite, field), Set()).foreach(m => methodStubs(m).setTrigger(SetTriggerRequest()))
       Future.successful(PutFieldResponse())
     }
 
@@ -203,7 +209,6 @@ class Machine(val host: String, val port: Int) {
     while (change) {
       change = false
       for (node <- rpo) {
-        println("Machine " + port + " processing node " + node.toString)
         val inFact = node match {
           case node: BBNode => computeInForBBNode(node)
           case node: CRNode => computeInForCrNode(node)
@@ -211,13 +216,9 @@ class Machine(val host: String, val port: Int) {
           case node: BBEntryNode => computeInForBBEntryNode(node)
           case _ => throw new RuntimeException()
         }
-        println(inFact)
         in.put(node, inFact)
         val outFact = node.instructions.foldLeft[Value](inFact)((v, s) => analysis.transfer(s,v, methodStubs))
-        println(outFact)
-        println(out.get(node))
         if (!outFact.equals(out.get(node))) {
-          println("CHANGED")
           out.put(node, outFact)
           change = true
           for (callee <- getCallees(node)) {

@@ -18,6 +18,7 @@ service DataflowServer {
 message GetFieldRequest {
   string allocSite = 1;
   string field = 2;
+  string requestingMethod = 3;
 }
 
 message GetFieldResponse {
