@@ -1,4 +1,4 @@
-void <init>()
+void finalize()
 AITACode(params=(Parameters(
 	0: useSites={} (origin=-1)
 )),stmts=(
@@ -22,7 +22,9 @@ AITACode(params=(Parameters(
 	BB_3: ExitNode(normalReturn=false)
 ))
 
-void finalize()
+registerNatives
+
+void <init>()
 AITACode(params=(Parameters(
 	0: useSites={} (origin=-1)
 )),stmts=(
@@ -32,6 +34,4 @@ AITACode(params=(Parameters(
 	BB_1: ExitNode(normalReturn=true)
 	BB_2: ExitNode(normalReturn=false)
 ))
-
-registerNatives
 

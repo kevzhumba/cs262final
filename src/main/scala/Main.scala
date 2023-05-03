@@ -36,12 +36,11 @@ object Main extends App {
       val cfg = CfgProcessor.buildIntraproceduralCFG(callGraph, tac)
       val methods = cfg.keys.toList
       var machines: List[(Machine, ComputationUnit)] = List()
+      val methodPorts = methods.map(m => (m, "127.0.0.1", methods.indexOf(m) + 6000))
       for ((method, idx) <- methods.zipWithIndex) {
         val port = 6000 + idx
         val prog = cfg(method)
-        val calleePorts = prog._callees.flatMap(_._2).distinct.map[(MethodDescription, String, Int)](m => (m, "127.0.0.1", methods.indexOf(m) + 6000))
-        val callerPorts = prog._callers.map(_._2).map(m => (m, "127.0.0.1", methods.indexOf(m) + 6000))
-        val unit = ComputationUnit(prog, "constant", calleePorts, callerPorts)
+        val unit = ComputationUnit(prog, "constant", methodPorts)
         val machine = new Machine("127.0.0.1", port)
         machines = machines ++ List((machine, unit))
       }
@@ -70,7 +69,11 @@ object Main extends App {
         Thread.sleep(1000)
       }
       val results = stubs.map(stub => stub.shutDown(ShutDownRequest()).payload)
-      println(results.map(json => read[Map[Int,Constant]](json)))
+      val map = results.map(json => read[Map[Int,Constant]](json))
+      for (i <- map.indices) {
+        println(methods(i))
+        println(map(i).map(p => (cfg(methods(i)).nodes.find(n => n.id == p._1).get, p._2)))
+      }
       // println(PrettyPrinter.prettyPrint(cfg.successors))
     case None =>
   }

@@ -27,8 +27,7 @@ case class DataflowProblem[V <: Value](analysis: Analysis)
 case class ComputationUnit(
                             cfg: ExplodedCfg,
                             analysis: String,
-                            callees: List[(MethodDescription, String, Int)],
-                            callers: List[(MethodDescription, String, Int)])
+                            methods: List[(MethodDescription, String, Int)])
 
 class Machine(val host: String, val port: Int) {
 
@@ -48,8 +47,7 @@ class Machine(val host: String, val port: Int) {
   var change: Boolean = true
   var waiting: AtomicBoolean = new AtomicBoolean(false)
   val heartBeat: AtomicBoolean = new AtomicBoolean(false)
-  val calleeStubs: ConcurrentMap[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = new ConcurrentHashMap()
-  val callerStubs: ConcurrentMap[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = new ConcurrentHashMap()
+  val methodStubs: ConcurrentMap[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = new ConcurrentHashMap()
   var valueOperator: ValueOperator = null
   var analysis: Analysis = null
   val endFlag: AtomicBoolean = new AtomicBoolean(false)
@@ -115,15 +113,10 @@ class Machine(val host: String, val port: Int) {
   def initialize(unit: ComputationUnit): Unit = {
     cfg = unit.cfg
     method = cfg.entry.method
-    for (callee <- unit.callees) {
-      val channel = NettyChannelBuilder.forAddress(callee._2, callee._3).usePlaintext().build
+    for (method <- unit.methods) {
+      val channel = NettyChannelBuilder.forAddress(method._2, method._3).usePlaintext().build
       val blockingStub = DataflowServerGrpc.blockingStub(channel)
-      calleeStubs.put(callee._1, blockingStub)
-    }
-    for (caller <- unit.callers) {
-      val channel = NettyChannelBuilder.forAddress(caller._2, caller._3).usePlaintext().build
-      val blockingStub = DataflowServerGrpc.blockingStub(channel)
-      callerStubs.put(caller._1, blockingStub)
+      methodStubs.put(method._1, blockingStub)
     }
     if (unit.analysis.equals("constant")) {
       analysis = ConstantPropagationAnalysis
@@ -172,7 +165,6 @@ class Machine(val host: String, val port: Int) {
         if (endFlag.get()) {
           break()
         }
-        Thread.sleep(500)
       }
     }
   }
@@ -214,10 +206,12 @@ class Machine(val host: String, val port: Int) {
           out.put(node, outFact)
           change = true
           for (callee <- getCallees(node)) {
-            calleeStubs.get(callee).setTrigger(SetTriggerRequest())
+            methodStubs.get(callee).setTrigger(SetTriggerRequest())
           }
           if (node.isExit) {
-            callerStubs.forEach((k,v) => v.setTrigger(SetTriggerRequest()))
+            for (method <- cfg._callers) {
+              methodStubs.get(method._2).setTrigger(SetTriggerRequest())
+            }
           }
         }
       }
@@ -233,11 +227,8 @@ class Machine(val host: String, val port: Int) {
     var running: Option[Value] = None
     for (callee <- callees) {
       val req = GetCalleeInfoRequest("constant")
-      val response = calleeStubs.get(callee).getCalleeInfo(req)
-
+      val response = methodStubs.get(callee).getCalleeInfo(req)
       val ret = read[Constant](response.payload)
-      println("GETTING RETURN INFO")
-      println(ret)
       running match {
         case Some(value) => running = Some(valueOperator.join(value, ret))
         case None => running = Some(ret)
@@ -279,7 +270,7 @@ class Machine(val host: String, val port: Int) {
       //TODO add handling if we can't get the thing(If it goes down ig)
       //The callers should just give us argument information
       val req = GetCallerInfoRequest("constant", caller._1)
-      val stub = callerStubs.get(caller._2)
+      val stub = methodStubs.get(caller._2)
       val response = stub.getCallerInfo(req)
       val constant = read[Constant](response.payload)
       running match {

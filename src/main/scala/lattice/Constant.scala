@@ -5,7 +5,8 @@ object ConstantOperator extends ValueOperator {
   override def join(l1: Value, l2: Value): Value = {
     val map1 = l1.asInstanceOf[Constant].vals
     val map2 = l2.asInstanceOf[Constant].vals
-    Constant(map1 ++ map2.map { case (k, v) => k -> joinIntegers(v, map1.getOrElse(k, Integer(true, None))) })
+    Constant(map1 ++ map2.map { case (k, v) => k -> (joinIntegers(v._1, map1.getOrElse(k, (Integer(true, None), AbstractObject(Set())))._1),
+      joinAbstractObjects(v._2, map1.getOrElse(k, (Integer(true, None), AbstractObject(Set())))._2)) })
   }
   override def leq(l1: Value, l2: Value): Boolean = ???
   override def isBottom(l1: Value): Boolean = ???
@@ -27,7 +28,7 @@ object ConstantOperator extends ValueOperator {
 
   override def addRetInformation(ret: Value, l2: Value): Value = {
     val cret = ret.asInstanceOf[Constant]
-    val retVal = cret.vals.getOrElse("returnForCaller", Integer(true, None))
+    val retVal = cret.vals.getOrElse("returnForCaller", (Integer(true, None), AbstractObject(Set())))
     Constant(l2.asInstanceOf[Constant].vals + ("returnFromCallee" -> retVal))
   }
 
@@ -43,9 +44,10 @@ object ConstantOperator extends ValueOperator {
       constant.vals.map(k => ((startIdx - k._1.substring("arg_".length).toInt).toString, k._2)))
   }
 
-
-
-  def joinIntegers(i1: Integer, i2: Integer): Integer = {
+  def joinAbstractObjects(a1: AbstractObject, a2: AbstractObject): AbstractObject = {
+    AbstractObject(a1.sites ++ a2.sites)
+  }
+  def joinIntegers(i1:Integer, i2: Integer): Integer = {
     if (i1.isBot) {
       i2
     } else if (i2.isBot) {
@@ -62,6 +64,6 @@ object ConstantOperator extends ValueOperator {
 
 case class Integer(isBot: Boolean, int: Option[Int])
 
-case class Constant(vals: Map[String, Integer]) extends Value
+case class Constant(vals: Map[String, (Integer, AbstractObject)]) extends Value
 
 
