@@ -60,6 +60,10 @@ object ConstantOperator extends ValueOperator {
       i1
     }
   }
+
+  def joinTuples(a1: (Integer, AbstractObject), a2: (Integer, AbstractObject)): (Integer, AbstractObject) = {
+    (joinIntegers(a1._1, a2._1), joinAbstractObjects(a1._2, a2._2))
+  }
 }
 
 case class Integer(isBot: Boolean, int: Option[Int])

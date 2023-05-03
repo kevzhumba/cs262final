@@ -1,28 +1,21 @@
 package dataflow
 
 import analyses.{Analysis, ConstantPropagationAnalysis}
-import cfg.{BBEntryNode, BBNode, CRNode, CfgNode, ExNode, ExplodedCfg, ExprSerializer, FieldTypeSerializer, MethodDescription, StmtSerializer}
-import io.grpc.ServerBuilder
+import cfg._
 import io.grpc.netty.{NettyChannelBuilder, NettyServerBuilder}
-import lattice.{Constant, ConstantOperator, Value, ValueOperator}
-import org.opalj.br.DeclaredMethod
-import org.opalj.br.cfg.CFG
-import org.opalj.tac.fpcf.properties.cg.Callers
-import protos.dataflow.{DataflowServerGrpc, GetCalleeInfoRequest, GetCalleeInfoResponse, GetCallerInfoRequest, GetCallerInfoResponse, GetHeartbeatRequest, GetHeartbeatResponse, ReceiveComputationUnitRequest, ReceiveComputationUnitResponse, SetTriggerRequest, SetTriggerResponse, ShutDownRequest, ShutDownResponse}
-
-import scala.collection.{mutable}
-import scala.concurrent.{ExecutionContext, Future}
+import lattice._
 import org.json4s._
-import org.json4s.DefaultFormats
 import org.json4s.native.Serialization
 import org.json4s.native.Serialization.{read, write}
+import protos.dataflow._
 
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
+import scala.collection.mutable
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.Breaks.{break, breakable}
 
-case class DataflowProblem[V <: Value](analysis: Analysis)
 
 case class ComputationUnit(
                             cfg: ExplodedCfg,
@@ -30,6 +23,7 @@ case class ComputationUnit(
                             methods: List[(MethodDescription, String, Int)])
 
 class Machine(val host: String, val port: Int) {
+  //TODO A
 
   implicit val formats = Serialization.formats(
     ShortTypeHints(
@@ -39,20 +33,40 @@ class Machine(val host: String, val port: Int) {
         classOf[ExNode],
         classOf[CRNode]))) +
     new StmtSerializer() + new ExprSerializer() + new FieldTypeSerializer()
-
+  // Machine state
+  //Local state
   val in: ConcurrentMap[CfgNode, Value] = new ConcurrentHashMap()
   val out: ConcurrentMap[CfgNode, Value] = new ConcurrentHashMap()
+
+  //Points to state: these should be allocation sites that were allocated in this method
+  val pointsTo: ConcurrentMap[(AllocationSite, String), (lattice.Integer, AbstractObject)] = new ConcurrentHashMap()
+
   var method: MethodDescription = null
   var cfg: ExplodedCfg = null
   var change: Boolean = true
   var waiting: AtomicBoolean = new AtomicBoolean(false)
   val heartBeat: AtomicBoolean = new AtomicBoolean(false)
-  val methodStubs: ConcurrentMap[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = new ConcurrentHashMap()
+  var methodStubs: Map[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = Map()
   var valueOperator: ValueOperator = null
   var analysis: Analysis = null
   val endFlag: AtomicBoolean = new AtomicBoolean(false)
 
   private class MachineServer extends protos.dataflow.DataflowServerGrpc.DataflowServer {
+    override def getField(request: GetFieldRequest): Future[GetFieldResponse] = {
+      val value = pointsTo.getOrDefault((read[AbstractObject](request.allocSite), request.field), analysis.defaultFieldValue)
+      val json = write(value)
+      Future.successful(GetFieldResponse(json))
+    }
+
+    override def putField(request: PutFieldRequest): Future[PutFieldResponse] = {
+      val value = read[(lattice.Integer, AbstractObject)](request.value)
+      val allocationSite = read[AllocationSite](request.allocSite)
+      val field = request.field
+      pointsTo.compute(
+        (allocationSite, field),
+        (k, v) => if (v == null) ConstantOperator.joinTuples(value, analysis.defaultFieldValue) else ConstantOperator.joinTuples(v, value))
+      Future.successful(PutFieldResponse())
+    }
 
     override def getHeartbeat(request: GetHeartbeatRequest): Future[GetHeartbeatResponse] = { //TODO make this more robust
       Future.successful(GetHeartbeatResponse(heartBeat.get()))
@@ -106,29 +120,30 @@ class Machine(val host: String, val port: Int) {
       }
       val json = write(map)
       endFlag.set(true)
+      println(pointsTo)
       Future.successful(ShutDownResponse("constant", json))
     }
   }
 
   def initialize(unit: ComputationUnit): Unit = {
-    cfg = unit.cfg
-    method = cfg.entry.method
     for (method <- unit.methods) {
       val channel = NettyChannelBuilder.forAddress(method._2, method._3).usePlaintext().build
       val blockingStub = DataflowServerGrpc.blockingStub(channel)
-      methodStubs.put(method._1, blockingStub)
+      methodStubs += (method._1 -> blockingStub)
     }
     if (unit.analysis.equals("constant")) {
       analysis = ConstantPropagationAnalysis
       valueOperator = ConstantOperator
     }
-    println(cfg._callers)
-    println(cfg._callees)
-    val initial = analysis.initialValue(cfg)
-    for (node <- cfg.nodes) {
+    println(unit.cfg._callers)
+    println(unit.cfg._callees)
+    val initial = analysis.initialValue(unit.cfg)
+    for (node <- unit.cfg.nodes) {
       in.put(node, initial)
       out.put(node, initial)
     }
+    cfg = unit.cfg
+    method = cfg.entry.method
   }
 
   def run(): Unit = {
@@ -198,7 +213,7 @@ class Machine(val host: String, val port: Int) {
         }
         println(inFact)
         in.put(node, inFact)
-        val outFact = node.instructions.foldLeft[Value](inFact)((v, s) => analysis.transfer(s,v))
+        val outFact = node.instructions.foldLeft[Value](inFact)((v, s) => analysis.transfer(s,v, methodStubs))
         println(outFact)
         println(out.get(node))
         if (!outFact.equals(out.get(node))) {
@@ -206,11 +221,11 @@ class Machine(val host: String, val port: Int) {
           out.put(node, outFact)
           change = true
           for (callee <- getCallees(node)) {
-            methodStubs.get(callee).setTrigger(SetTriggerRequest())
+            methodStubs(callee).setTrigger(SetTriggerRequest())
           }
           if (node.isExit) {
             for (method <- cfg._callers) {
-              methodStubs.get(method._2).setTrigger(SetTriggerRequest())
+              methodStubs(method._2).setTrigger(SetTriggerRequest())
             }
           }
         }
@@ -227,7 +242,7 @@ class Machine(val host: String, val port: Int) {
     var running: Option[Value] = None
     for (callee <- callees) {
       val req = GetCalleeInfoRequest("constant")
-      val response = methodStubs.get(callee).getCalleeInfo(req)
+      val response = methodStubs(callee).getCalleeInfo(req)
       val ret = read[Constant](response.payload)
       running match {
         case Some(value) => running = Some(valueOperator.join(value, ret))
@@ -270,7 +285,7 @@ class Machine(val host: String, val port: Int) {
       //TODO add handling if we can't get the thing(If it goes down ig)
       //The callers should just give us argument information
       val req = GetCallerInfoRequest("constant", caller._1)
-      val stub = methodStubs.get(caller._2)
+      val stub = methodStubs(caller._2)
       val response = stub.getCallerInfo(req)
       val constant = read[Constant](response.payload)
       running match {

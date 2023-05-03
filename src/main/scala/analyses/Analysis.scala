@@ -1,8 +1,8 @@
 package analyses
 
-import cfg.{ ExplodedCfg, MethodDescription, StmtNode}
-import lattice.Value
-import org.opalj.br.analyses.Project
+import cfg.{ExplodedCfg, MethodDescription, StmtNode}
+import lattice.{AbstractObject, Value}
+import protos.dataflow.DataflowServerGrpc
 
 
 trait Analysis {
@@ -13,6 +13,10 @@ trait Analysis {
 
   def botValue: Value
 
-  def transfer(stmtNode: StmtNode, in: Value): Value
+  def defaultFieldValue: (lattice.Integer, AbstractObject)
+
+  def transfer(stmtNode: StmtNode,
+               in: Value,
+               stubs: Map[MethodDescription, DataflowServerGrpc.DataflowServerBlockingStub]): Value
 
 }

@@ -11,6 +11,26 @@ service DataflowServer {
   rpc ReceiveComputationUnit (ReceiveComputationUnitRequest) returns (ReceiveComputationUnitResponse) {}
   rpc SetTrigger (SetTriggerRequest) returns (SetTriggerResponse) {}
   rpc ShutDown (ShutDownRequest) returns (ShutDownResponse) {}
+  rpc PutField (PutFieldRequest) returns (PutFieldResponse) {}
+  rpc GetField (GetFieldRequest) returns (GetFieldResponse) {}
+}
+
+message GetFieldRequest {
+  string allocSite = 1;
+  string field = 2;
+}
+
+message GetFieldResponse {
+  string value = 1;
+}
+
+message PutFieldRequest {
+  string allocSite = 1;
+  string field = 2;
+  string value = 3;
+}
+
+message PutFieldResponse {
 }
 
 // The request message containing the user's name.
