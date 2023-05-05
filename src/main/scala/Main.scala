@@ -56,6 +56,15 @@ object Main extends App {
     machine.run()
   }
 
+  /** Starts worker machines on localhost with ports 6000, 6001, ... Assigns
+    * each worker machine a computation unit corresponding to a method in the
+    * control flow graph.
+    *
+    * @param cfg
+    *   Map of method descriptions to exploded control flow graphs
+    * @return
+    *   List of tuples of worker machines and their computation units
+    */
   def startWorkerMachines(
       cfg: Map[MethodDescription, ExplodedCfg]
   ): List[(Machine, ComputationUnit)] = {
@@ -79,6 +88,12 @@ object Main extends App {
     machines
   }
 
+  /** Sends heartbeat requests to all worker machines until they have all
+    * converged
+    *
+    * @param stubs
+    *   List of grpc stubs for worker machines
+    */
   def getHeartbeatRequests(stubs: List[DataflowServerBlockingStub]): Unit = {
     var i = 0
     while (i < 5) {
@@ -92,6 +107,17 @@ object Main extends App {
       Thread.sleep(1000)
     }
   }
+
+  /** Starts worker machines and sends them computation units corresponding to
+    * methods in the control flow graph. Sends heartbeat requests to all worker
+    * machines until they have all converged. Shuts down all worker machines and
+    * prints the results.
+    *
+    * @param cfg
+    *   Map of method descriptions to exploded control flow graphs
+    * @param otherMachines
+    *   List of tuples of hostnames and ports of other worker machines
+    */
   def runMainMachine(
       cfg: Map[MethodDescription, ExplodedCfg],
       otherMachines: List[(String, Int)]
