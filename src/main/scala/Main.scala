@@ -8,27 +8,38 @@ import org.json4s.native.Serialization
 import org.json4s.native.Serialization.{read, write}
 import org.opalj.tac.cg.CFA_1_1_CallGraphKey
 import protos.dataflow.DataflowServerGrpc.DataflowServerBlockingStub
-import protos.dataflow.{DataflowServerGrpc, GetHeartbeatRequest, ReceiveComputationUnitRequest, ShutDownRequest}
-
+import protos.dataflow.{
+  DataflowServerGrpc,
+  GetHeartbeatRequest,
+  ReceiveComputationUnitRequest,
+  ShutDownRequest
+}
 
 object Main extends App {
+  // Set up JSON serialization formats
   implicit val formats = Serialization.formats(
     ShortTypeHints(
       List(
         classOf[BBNode],
         classOf[BBEntryNode],
         classOf[ExNode],
-        classOf[CRNode]))) +
+        classOf[CRNode]
+      )
+    )
+  ) +
     new StmtSerializer() + new ExprSerializer() + new FieldTypeSerializer()
 
+  // Parse command line arguments
   val argConfig = CliParser.parseArgs(args)
   argConfig match {
     case Some(value) =>
       if (value.worker) {
         runWorkerMachine(value.host, value.port)
       } else {
+        // Load Java project and construct control flow graph
         implicit val p = JavaLoader.loadJavaProject(value.project)
         val callGraph = p.get(CFA_1_1_CallGraphKey)
+        // Generate three address code for all reachable methods
         val tac = TACGenerator(callGraph.reachableMethods().map(_.method).toSet)
         if (value.generate_tac) {
           tac.printToFile(value.out)
@@ -45,10 +56,13 @@ object Main extends App {
     machine.run()
   }
 
-  def startWorkerMachines(cfg: Map[MethodDescription, ExplodedCfg]): List[(Machine, ComputationUnit)] = {
+  def startWorkerMachines(
+      cfg: Map[MethodDescription, ExplodedCfg]
+  ): List[(Machine, ComputationUnit)] = {
     val methods = cfg.keys.toList
     var machines: List[(Machine, ComputationUnit)] = List()
-    val methodPorts = methods.map(m => (m, "127.0.0.1", methods.indexOf(m) + 6000))
+    val methodPorts =
+      methods.map(m => (m, "127.0.0.1", methods.indexOf(m) + 6000))
     for ((method, idx) <- methods.zipWithIndex) {
       val port = 6000 + idx
       val prog = cfg(method)
@@ -65,10 +79,12 @@ object Main extends App {
     machines
   }
 
-  def getHeartbeatRequests(stubs: List[DataflowServerBlockingStub]):Unit = {
+  def getHeartbeatRequests(stubs: List[DataflowServerBlockingStub]): Unit = {
     var i = 0
     while (i < 5) {
-      if (stubs.forall(stub => stub.getHeartbeat(GetHeartbeatRequest()).converged)) {
+      if (
+        stubs.forall(stub => stub.getHeartbeat(GetHeartbeatRequest()).converged)
+      ) {
         i = i + 1
       } else {
         i = 0
@@ -76,12 +92,18 @@ object Main extends App {
       Thread.sleep(1000)
     }
   }
-  def runMainMachine(cfg: Map[MethodDescription, ExplodedCfg], otherMachines: List[(String, Int)]): Unit = {
+  def runMainMachine(
+      cfg: Map[MethodDescription, ExplodedCfg],
+      otherMachines: List[(String, Int)]
+  ): Unit = {
     val methods = cfg.keys.toList
     val machines = startWorkerMachines(cfg)
     var stubs: List[DataflowServerBlockingStub] = List()
     for ((machine, unit) <- machines) {
-      val channel = NettyChannelBuilder.forAddress(machine.host, machine.port).usePlaintext().build
+      val channel = NettyChannelBuilder
+        .forAddress(machine.host, machine.port)
+        .usePlaintext()
+        .build
       val blockingStub = DataflowServerGrpc.blockingStub(channel)
       val json = write(unit)
       stubs = stubs ++ List(blockingStub)
@@ -92,7 +114,11 @@ object Main extends App {
     val map = results.map(json => read[Map[Int, Constant]](json))
     for (i <- map.indices) {
       println(methods(i))
-      println(map(i).map(p => (cfg(methods(i)).nodes.find(n => n.id == p._1).get, p._2)))
+      println(
+        map(i).map(p =>
+          (cfg(methods(i)).nodes.find(n => n.id == p._1).get, p._2)
+        )
+      )
     }
   }
 

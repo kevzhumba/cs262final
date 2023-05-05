@@ -1,4 +1,0 @@
-[0m[[0m[33mwarn[0m] [0m[0m/Users/kevinzhang/hw/cs262final/src/main/scala/cfg/TACGenerator.scala:49:12: This catches all Throwables. If this is really intended, use `case a : Throwable` to clear this warning.[0m
-[0m[[0m[33mwarn[0m] [0m[0m      case a => println("ALSJKDASL"); println(method); println(opt); println(tacMap); throw a[0m
-[0m[[0m[33mwarn[0m] [0m[0m           ^[0m
-[0m[[0m[33mwarn[0m] [0m[0mone warning found[0m
