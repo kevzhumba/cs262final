@@ -36,23 +36,19 @@ message PutFieldResponse {
 
 // The request message containing the user's name.
 message GetCallerInfoRequest {
-  string lattice = 1; // the type of lattice
-  int32 caller = 2; // the idx of caller instruction
+  int32 caller = 1; // the idx of caller instruction
 }
 
 // The response message containing the greetings
 message GetCallerInfoResponse {
-  string lattice = 1;
-  string payload = 2;
+  string payload = 1;
 }
 
 message GetCalleeInfoRequest {
-  string lattice = 1;
 }
 
 message GetCalleeInfoResponse {
-  string lattice = 1;
-  string payload = 2;
+  string payload = 1;
 }
 
 message GetHeartbeatRequest {
@@ -83,6 +79,5 @@ message ShutDownRequest {
 }
 
 message ShutDownResponse {
-  string lattice = 1;
-  string payload = 2;
+  string payload = 1;
 }

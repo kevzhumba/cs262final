@@ -27,7 +27,6 @@ object ConstantPropagationAnalysis extends Analysis {
 
   override def initialValue(cfg: ExplodedCfg): Value = {
     val ints = cfg.nodes.flatMap(c => c.instructions.flatMap(i => StmtUtil.getVars(i.stmt))).toList
-    println(ints)
     Constant(ints.map(i => (i.toString, (Integer(true, None), AbstractObject(Set())))).toMap)
   }
 
@@ -85,7 +84,7 @@ object ConstantPropagationAnalysis extends Analysis {
             Constant(input.vals ++ (recv :: args).zipWithIndex.map(i => ("arg_" + i._2.toString, i._1)).toMap)
           }
         case ExprStmt(expr) => throw new RuntimeException("EVAL")
-        case _ => println("Unhandled stmt"); in
+        case _ =>  in
       }
     }
 

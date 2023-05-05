@@ -7,5 +7,8 @@ case class Config(
                    interact: Boolean = false,
                    generate_tac: Boolean = false,
                    heap: Boolean = false,
-                   out: File = new File(".")
+                   out: File = new File("."),
+                   worker: Boolean = false,
+                   host: String = "",
+                   port: Int = 0
                  )

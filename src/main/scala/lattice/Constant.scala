@@ -13,9 +13,7 @@ object ConstantOperator extends ValueOperator {
 
   override def getArgs(l1: Value): Value = {
     val c1 = l1.asInstanceOf[Constant]
-    println("GETTING ARGS")
     val args = c1.vals.filter(k => k._1.contains("arg"))
-    println(args)
     Constant(args)
   }
 

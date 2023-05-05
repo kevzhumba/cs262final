@@ -12,7 +12,6 @@ object CliParser {
       programName("PathSensitiveFramework"),
       head("psf", "0.1"),
       arg[File]("<file>")
-        .required()
         .action((x, c) => c.copy(project=x))
         .text("path to java project"),
       opt[Unit]('i', "interact")
@@ -24,9 +23,16 @@ object CliParser {
       opt[File]('o', "out")
         .action((o, c) => c.copy(out = o))
         .text("output directory"),
-      opt[Unit]('h', "heap")
-        .action((h, c) => c.copy(heap = true))
-        .text("print heap")
+      opt[Unit]('w', "worker")
+        .action((w, c) => c.copy(worker =  true))
+        .text("worker machine"),
+      opt[Int]('p',"port")
+        .action((p, c) => c.copy(port = p))
+        .text("port"),
+      opt[String]('h', "host")
+        .action((h, c) => c.copy(host = h))
+        .text("host"),
+
     )
   }
 

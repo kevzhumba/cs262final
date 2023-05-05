@@ -48,8 +48,8 @@ class Machine(val host: String, val port: Int) {
   var waiting: AtomicBoolean = new AtomicBoolean(false)
   val heartBeat: AtomicBoolean = new AtomicBoolean(false)
   var methodStubs: Map[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = Map()
-  var valueOperator: ValueOperator = null
-  var analysis: Analysis = null
+  var valueOperator: ValueOperator = ConstantOperator
+  var analysis: Analysis = ConstantPropagationAnalysis
   val endFlag: AtomicBoolean = new AtomicBoolean(false)
   val readers: ConcurrentMap[(AllocationSite, String), Set[MethodDescription]] = new ConcurrentHashMap()
 
@@ -67,10 +67,22 @@ class Machine(val host: String, val port: Int) {
       val value = read[(lattice.Integer, AbstractObject)](request.value)
       val allocationSite = read[AllocationSite](request.allocSite)
       val field = request.field
+      var change:Boolean  = false
       pointsTo.compute(
         (allocationSite, field),
-        (k, v) => if (v == null) ConstantOperator.joinTuples(value, analysis.defaultFieldValue) else ConstantOperator.joinTuples(v, value))
-      readers.getOrDefault((allocationSite, field), Set()).foreach(m => methodStubs(m).setTrigger(SetTriggerRequest()))
+        (k, v) =>{
+          if (v == null) {
+            val inter = ConstantOperator.joinTuples(value, analysis.defaultFieldValue)
+            change = !inter.equals(analysis.defaultFieldValue)
+            inter
+          } else {
+            val inter = ConstantOperator.joinTuples(v, value)
+            change = !inter.equals(v)
+            inter
+          }
+        })
+
+      if (change) readers.getOrDefault((allocationSite, field), Set()).foreach(m => methodStubs(m).setTrigger(SetTriggerRequest()))
       Future.successful(PutFieldResponse())
     }
 
@@ -79,19 +91,13 @@ class Machine(val host: String, val port: Int) {
     }
 
     override def getCallerInfo(request: GetCallerInfoRequest): Future[GetCallerInfoResponse] = {
-      val lattice = request.lattice
       val idx = request.caller
-      if (lattice.equals("constant")) {
-        val node = cfg.nodes.find(n => !n.isCallRet  && n.instructions.exists(s => s.idx == idx)).get //this is the caller node
-        println("I AM GETTING ARGS " + port)
-        println(out.get(node))
-        val latticeElem = valueOperator.getArgs(out.get(node)) //this ensures only arguments are passed
-        //Need to filter args somehow or something? add this later.
-        val json = write(latticeElem)
-        Future.successful(GetCallerInfoResponse(lattice, json))
-      } else {
-        throw new RuntimeException("Not constant")
-      }
+      val node = cfg.nodes.find(n => !n.isCallRet  && n.instructions.exists(s => s.idx == idx)).get //this is the caller node
+      val latticeElem = valueOperator.getArgs(out.get(node)) //this ensures only arguments are passed
+      //Need to filter args somehow or something? add this later.
+      val json = write(latticeElem)
+      Future.successful(GetCallerInfoResponse(json))
+
     }
 
     override def receiveComputationUnit(request: ReceiveComputationUnitRequest): Future[ReceiveComputationUnitResponse] = {
@@ -103,14 +109,9 @@ class Machine(val host: String, val port: Int) {
    }
 
     override def getCalleeInfo(request: GetCalleeInfoRequest): Future[GetCalleeInfoResponse] = {
-      val lattice = request.lattice
-      if (lattice.equals("constant")) {
-        val latticeElem = valueOperator.getRet(out.get(cfg.nodes.find(p => p.isExit && p.asInstanceOf[ExNode].isNormalReturn).get)) //this should give only return information
-        val json = write(latticeElem)
-        Future.successful(GetCalleeInfoResponse(lattice, json))
-      } else {
-        throw new RuntimeException("Not Constant")
-      }
+      val latticeElem = valueOperator.getRet(out.get(cfg.nodes.find(p => p.isExit && p.asInstanceOf[ExNode].isNormalReturn).get)) //this should give only return information
+      val json = write(latticeElem)
+      Future.successful(GetCalleeInfoResponse(json))
     }
 
     override def setTrigger(request: SetTriggerRequest): Future[SetTriggerResponse] = {
@@ -126,8 +127,7 @@ class Machine(val host: String, val port: Int) {
       }
       val json = write(map)
       endFlag.set(true)
-      println(pointsTo)
-      Future.successful(ShutDownResponse("constant", json))
+      Future.successful(ShutDownResponse(json))
     }
   }
 
@@ -137,12 +137,6 @@ class Machine(val host: String, val port: Int) {
       val blockingStub = DataflowServerGrpc.blockingStub(channel)
       methodStubs += (method._1 -> blockingStub)
     }
-    if (unit.analysis.equals("constant")) {
-      analysis = ConstantPropagationAnalysis
-      valueOperator = ConstantOperator
-    }
-    println(unit.cfg._callers)
-    println(unit.cfg._callees)
     val initial = analysis.initialValue(unit.cfg)
     for (node <- unit.cfg.nodes) {
       in.put(node, initial)
@@ -158,7 +152,6 @@ class Machine(val host: String, val port: Int) {
     }
     serverThread.start()
     while (cfg == null || method == null) {
-      println("Waiting")
       Thread.sleep(1000) //wait until we have gotten the stuff from the client
     }
     Thread.sleep(5000)
@@ -178,6 +171,7 @@ class Machine(val host: String, val port: Int) {
     breakable {
       while (true) {
         if (!waiting.getAndSet(true)) {
+          println("Converging")
           change = true
           heartBeat.set(false)
           converge(rpo)
@@ -219,6 +213,9 @@ class Machine(val host: String, val port: Int) {
         in.put(node, inFact)
         val outFact = node.instructions.foldLeft[Value](inFact)((v, s) => analysis.transfer(s,v, methodStubs))
         if (!outFact.equals(out.get(node))) {
+//          println(node)
+//          println(out.get(node))
+//          println(outFact)
           out.put(node, outFact)
           change = true
           for (callee <- getCallees(node)) {
@@ -242,7 +239,7 @@ class Machine(val host: String, val port: Int) {
     //For each callee, get the things and join them
     var running: Option[Value] = None
     for (callee <- callees) {
-      val req = GetCalleeInfoRequest("constant")
+      val req = GetCalleeInfoRequest()
       val response = methodStubs(callee).getCalleeInfo(req)
       val ret = read[Constant](response.payload)
       running match {
@@ -267,10 +264,7 @@ class Machine(val host: String, val port: Int) {
 
   def computeInForBBNode(node: BBNode): Value = {
     var running: Option[Value] = None
-    println(cfg.getPredecessors(node))
     for (pred <- cfg.getPredecessors(node)) {
-      println(pred)
-      println(out.get(pred))
       val predL = valueOperator.restoreLocal(out.get(pred))
       running match {
         case Some(value) => running = Some(valueOperator.join(value, predL))
@@ -285,7 +279,7 @@ class Machine(val host: String, val port: Int) {
     for (caller <- cfg._callers) {
       //TODO add handling if we can't get the thing(If it goes down ig)
       //The callers should just give us argument information
-      val req = GetCallerInfoRequest("constant", caller._1)
+      val req = GetCallerInfoRequest(caller._1)
       val stub = methodStubs(caller._2)
       val response = stub.getCallerInfo(req)
       val constant = read[Constant](response.payload)
@@ -294,8 +288,6 @@ class Machine(val host: String, val port: Int) {
         case None => running = Some(constant)
       }
     }
-    println("ENTRYNODE")
-    println(running)
     if (running.isEmpty) {
       in.get(node)
     } else {
