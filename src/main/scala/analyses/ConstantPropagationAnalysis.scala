@@ -1,5 +1,6 @@
 package analyses
 
+import analyses.ConstantPropagationAnalysis.evalExpr
 import cfg._
 import lattice.{AbstractObject, AllocationSite, Constant, ConstantOperator, Integer, Value}
 import org.json4s.ShortTypeHints
@@ -83,7 +84,19 @@ object ConstantPropagationAnalysis extends Analysis {
             val args = params.map(evalExpr(_, isCallRet, input, stmtNode, stubs)._1).toList
             Constant(input.vals ++ (recv :: args).zipWithIndex.map(i => ("arg_" + i._2.toString, i._1)).toMap)
           }
-        case ExprStmt(expr) => throw new RuntimeException("EVAL")
+        case ExprStmt(expr) =>
+          if (isCallRet) {
+            evalExpr(expr, isCallRet, input, stmtNode, stubs)._1
+            in
+          } else {
+            val res = evalExpr(expr, isCallRet, input, stmtNode, stubs)
+            if (!(res._1 eq null)) {
+              in
+            } else {
+              val params = res._2
+              Constant(input.vals ++ params.zipWithIndex.map(i => ("arg_" + i._2.toString, i._1)).toMap)
+            }
+          }
         case _ =>  in
       }
     }
