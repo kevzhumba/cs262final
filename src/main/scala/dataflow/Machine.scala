@@ -170,7 +170,7 @@ class Machine(val host: String, val port: Int) {
       var map: Map[Int, Value] = Map()
       for (node <- cfg.nodes) {
         val lattice = out.get(node)
-        map += (node.id -> lattice.asInstanceOf[Constant])
+        // map += (node.id -> lattice.asInstanceOf[Constant])
       }
       val json = write(map)
       endFlag.set(true)
