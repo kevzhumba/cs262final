@@ -16,14 +16,14 @@ import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.Breaks.{break, breakable}
 
-
 case class ComputationUnit(
-                            cfg: ExplodedCfg,
-                            analysis: String,
-                            methods: List[(MethodDescription, String, Int)])
+    cfg: ExplodedCfg,
+    analysis: String,
+    methods: List[(MethodDescription, String, Int)]
+)
 
 class Machine(val host: String, val port: Int) {
-  //TODO A
+  // TODO A
 
   implicit val formats = Serialization.formats(
     ShortTypeHints(
@@ -31,48 +31,69 @@ class Machine(val host: String, val port: Int) {
         classOf[BBNode],
         classOf[BBEntryNode],
         classOf[ExNode],
-        classOf[CRNode]))) +
+        classOf[CRNode]
+      )
+    )
+  ) +
     new StmtSerializer() + new ExprSerializer() + new FieldTypeSerializer()
   // Machine state
-  //Local state
+  // Local state
   val in: ConcurrentMap[CfgNode, Value] = new ConcurrentHashMap()
   val out: ConcurrentMap[CfgNode, Value] = new ConcurrentHashMap()
 
-  //Points to state: these should be allocation sites that were allocated in this method
-  val pointsTo: ConcurrentMap[(AllocationSite, String), (lattice.Integer, AbstractObject)] = new ConcurrentHashMap()
-  //Map from allocation site to reader? hmmmm that seems reasonable
+  // Points to state: these should be allocation sites that were allocated in this method
+  val pointsTo: ConcurrentMap[
+    (AllocationSite, String),
+    (lattice.Integer, AbstractObject)
+  ] = new ConcurrentHashMap()
+  // Map from allocation site to reader? hmmmm that seems reasonable
 
   var method: MethodDescription = null
   var cfg: ExplodedCfg = null
   var change: Boolean = true
   var waiting: AtomicBoolean = new AtomicBoolean(false)
   val heartBeat: AtomicBoolean = new AtomicBoolean(false)
-  var methodStubs: Map[MethodDescription,  DataflowServerGrpc.DataflowServerBlockingStub] = Map()
+  var methodStubs
+      : Map[MethodDescription, DataflowServerGrpc.DataflowServerBlockingStub] =
+    Map()
   var valueOperator: ValueOperator = ConstantOperator
   var analysis: Analysis = ConstantPropagationAnalysis
   val endFlag: AtomicBoolean = new AtomicBoolean(false)
-  val readers: ConcurrentMap[(AllocationSite, String), Set[MethodDescription]] = new ConcurrentHashMap()
+  val readers: ConcurrentMap[(AllocationSite, String), Set[MethodDescription]] =
+    new ConcurrentHashMap()
 
-  private class MachineServer extends protos.dataflow.DataflowServerGrpc.DataflowServer {
-    override def getField(request: GetFieldRequest): Future[GetFieldResponse] = {
+  private class MachineServer
+      extends protos.dataflow.DataflowServerGrpc.DataflowServer {
+    override def getField(
+        request: GetFieldRequest
+    ): Future[GetFieldResponse] = {
       val alloc = read[AllocationSite](request.allocSite)
-      val value = pointsTo.getOrDefault((alloc, request.field), analysis.defaultFieldValue)
+      val value = pointsTo.getOrDefault(
+        (alloc, request.field),
+        analysis.defaultFieldValue
+      )
       val method = read[MethodDescription](request.requestingMethod)
-      readers.compute((alloc, request.field), (k, v) => if (v == null) Set(method) else v + method)
+      readers.compute(
+        (alloc, request.field),
+        (k, v) => if (v == null) Set(method) else v + method
+      )
       val json = write(value)
       Future.successful(GetFieldResponse(json))
     }
 
-    override def putField(request: PutFieldRequest): Future[PutFieldResponse] = {
+    override def putField(
+        request: PutFieldRequest
+    ): Future[PutFieldResponse] = {
       val value = read[(lattice.Integer, AbstractObject)](request.value)
       val allocationSite = read[AllocationSite](request.allocSite)
       val field = request.field
-      var change:Boolean  = false
+      var change: Boolean = false
       pointsTo.compute(
         (allocationSite, field),
-        (k, v) =>{
+        (k, v) => {
           if (v == null) {
-            val inter = ConstantOperator.joinTuples(value, analysis.defaultFieldValue)
+            val inter =
+              ConstantOperator.joinTuples(value, analysis.defaultFieldValue)
             change = !inter.equals(analysis.defaultFieldValue)
             inter
           } else {
@@ -80,46 +101,72 @@ class Machine(val host: String, val port: Int) {
             change = !inter.equals(v)
             inter
           }
-        })
+        }
+      )
 
-      if (change) readers.getOrDefault((allocationSite, field), Set()).foreach(m => methodStubs(m).setTrigger(SetTriggerRequest()))
+      if (change)
+        readers
+          .getOrDefault((allocationSite, field), Set())
+          .foreach(m => methodStubs(m).setTrigger(SetTriggerRequest()))
       Future.successful(PutFieldResponse())
     }
 
-    override def getHeartbeat(request: GetHeartbeatRequest): Future[GetHeartbeatResponse] = { //TODO make this more robust
+    override def getHeartbeat(
+        request: GetHeartbeatRequest
+    ): Future[GetHeartbeatResponse] = { // TODO make this more robust
       Future.successful(GetHeartbeatResponse(heartBeat.get()))
     }
 
-    override def getCallerInfo(request: GetCallerInfoRequest): Future[GetCallerInfoResponse] = {
+    override def getCallerInfo(
+        request: GetCallerInfoRequest
+    ): Future[GetCallerInfoResponse] = {
       val idx = request.caller
-      val node = cfg.nodes.find(n => !n.isCallRet  && n.instructions.exists(s => s.idx == idx)).get //this is the caller node
-      val latticeElem = valueOperator.getArgs(out.get(node)) //this ensures only arguments are passed
-      //Need to filter args somehow or something? add this later.
+      val node = cfg.nodes
+        .find(n => !n.isCallRet && n.instructions.exists(s => s.idx == idx))
+        .get // this is the caller node
+      val latticeElem = valueOperator.getArgs(
+        out.get(node)
+      ) // this ensures only arguments are passed
+      // Need to filter args somehow or something? add this later.
       val json = write(latticeElem)
       Future.successful(GetCallerInfoResponse(json))
 
     }
 
-    override def receiveComputationUnit(request: ReceiveComputationUnitRequest): Future[ReceiveComputationUnitResponse] = {
+    override def receiveComputationUnit(
+        request: ReceiveComputationUnitRequest
+    ): Future[ReceiveComputationUnitResponse] = {
       if (method == null && cfg == null) {
         val unit = read[ComputationUnit](request.computationunit)
         initialize(unit)
       }
       Future.successful(ReceiveComputationUnitResponse())
-   }
+    }
 
-    override def getCalleeInfo(request: GetCalleeInfoRequest): Future[GetCalleeInfoResponse] = {
-      val latticeElem = valueOperator.getRet(out.get(cfg.nodes.find(p => p.isExit && p.asInstanceOf[ExNode].isNormalReturn).get)) //this should give only return information
+    override def getCalleeInfo(
+        request: GetCalleeInfoRequest
+    ): Future[GetCalleeInfoResponse] = {
+      val latticeElem = valueOperator.getRet(
+        out.get(
+          cfg.nodes
+            .find(p => p.isExit && p.asInstanceOf[ExNode].isNormalReturn)
+            .get
+        )
+      ) // this should give only return information
       val json = write(latticeElem)
       Future.successful(GetCalleeInfoResponse(json))
     }
 
-    override def setTrigger(request: SetTriggerRequest): Future[SetTriggerResponse] = {
+    override def setTrigger(
+        request: SetTriggerRequest
+    ): Future[SetTriggerResponse] = {
       waiting.set(false)
       Future.successful(SetTriggerResponse())
     }
 
-    override def shutDown(request: ShutDownRequest): Future[ShutDownResponse] = {
+    override def shutDown(
+        request: ShutDownRequest
+    ): Future[ShutDownResponse] = {
       var map: Map[Int, Value] = Map()
       for (node <- cfg.nodes) {
         val lattice = out.get(node)
@@ -133,7 +180,10 @@ class Machine(val host: String, val port: Int) {
 
   def initialize(unit: ComputationUnit): Unit = {
     for (method <- unit.methods) {
-      val channel = NettyChannelBuilder.forAddress(method._2, method._3).usePlaintext().build
+      val channel = NettyChannelBuilder
+        .forAddress(method._2, method._3)
+        .usePlaintext()
+        .build
       val blockingStub = DataflowServerGrpc.blockingStub(channel)
       methodStubs += (method._1 -> blockingStub)
     }
@@ -152,15 +202,19 @@ class Machine(val host: String, val port: Int) {
     }
     serverThread.start()
     while (cfg == null || method == null) {
-      Thread.sleep(1000) //wait until we have gotten the stuff from the client
+      Thread.sleep(1000) // wait until we have gotten the stuff from the client
     }
     Thread.sleep(5000)
     handleComputation()
   }
 
   def startServer(): Unit = {
-    val server = NettyServerBuilder.forAddress(new InetSocketAddress(host, port))
-      .addService(DataflowServerGrpc.bindService(new MachineServer, ExecutionContext.global))
+    val server = NettyServerBuilder
+      .forAddress(new InetSocketAddress(host, port))
+      .addService(
+        DataflowServerGrpc
+          .bindService(new MachineServer, ExecutionContext.global)
+      )
       .build
     server.start
     server.awaitTermination()
@@ -204,14 +258,16 @@ class Machine(val host: String, val port: Int) {
       change = false
       for (node <- rpo) {
         val inFact = node match {
-          case node: BBNode => computeInForBBNode(node)
-          case node: CRNode => computeInForCrNode(node)
-          case node: ExNode => computeInForExitNode(node)
+          case node: BBNode      => computeInForBBNode(node)
+          case node: CRNode      => computeInForCrNode(node)
+          case node: ExNode      => computeInForExitNode(node)
           case node: BBEntryNode => computeInForBBEntryNode(node)
-          case _ => throw new RuntimeException()
+          case _                 => throw new RuntimeException()
         }
         in.put(node, inFact)
-        val outFact = node.instructions.foldLeft[Value](inFact)((v, s) => analysis.transfer(s,v, methodStubs))
+        val outFact = node.instructions.foldLeft[Value](inFact)((v, s) =>
+          analysis.transfer(s, v, methodStubs)
+        )
         if (!outFact.equals(out.get(node))) {
 //          println(node)
 //          println(out.get(node))
@@ -233,10 +289,13 @@ class Machine(val host: String, val port: Int) {
 
   def computeInForCrNode(node: CRNode): Value = {
     val callNode =
-      cfg.getPredecessors(node).find(p => p.isInstanceOf[BBEntryNode] || p.isInstanceOf[BBNode]).get
+      cfg
+        .getPredecessors(node)
+        .find(p => p.isInstanceOf[BBEntryNode] || p.isInstanceOf[BBNode])
+        .get
     val indices = node.instructions.map(_.idx)
     val callees = cfg._callees.find(c => indices.contains(c._1)).get._2
-    //For each callee, get the things and join them
+    // For each callee, get the things and join them
     var running: Option[Value] = None
     for (callee <- callees) {
       val req = GetCalleeInfoRequest()
@@ -244,10 +303,13 @@ class Machine(val host: String, val port: Int) {
       val ret = read[Constant](response.payload)
       running match {
         case Some(value) => running = Some(valueOperator.join(value, ret))
-        case None => running = Some(ret)
+        case None        => running = Some(ret)
       }
     }
-    valueOperator.addRetInformation(running.get,valueOperator.restoreLocal(out.get(callNode)))
+    valueOperator.addRetInformation(
+      running.get,
+      valueOperator.restoreLocal(out.get(callNode))
+    )
   }
 
   def computeInForExitNode(node: ExNode): Value = {
@@ -256,7 +318,7 @@ class Machine(val host: String, val port: Int) {
       val predRet = valueOperator.getRet(out.get(pred))
       running match {
         case Some(value) => running = Some(valueOperator.join(value, predRet))
-        case None => running = Some(predRet)
+        case None        => running = Some(predRet)
       }
     }
     running.get
@@ -268,7 +330,7 @@ class Machine(val host: String, val port: Int) {
       val predL = valueOperator.restoreLocal(out.get(pred))
       running match {
         case Some(value) => running = Some(valueOperator.join(value, predL))
-        case None => running = Some(predL)
+        case None        => running = Some(predL)
       }
     }
     running.get
@@ -277,15 +339,15 @@ class Machine(val host: String, val port: Int) {
   def computeInForBBEntryNode(node: BBEntryNode): Value = {
     var running: Option[Value] = None
     for (caller <- cfg._callers) {
-      //TODO add handling if we can't get the thing(If it goes down ig)
-      //The callers should just give us argument information
+      // TODO add handling if we can't get the thing(If it goes down ig)
+      // The callers should just give us argument information
       val req = GetCallerInfoRequest(caller._1)
       val stub = methodStubs(caller._2)
       val response = stub.getCallerInfo(req)
       val constant = read[Constant](response.payload)
       running match {
         case Some(value) => running = Some(valueOperator.join(value, constant))
-        case None => running = Some(constant)
+        case None        => running = Some(constant)
       }
     }
     if (running.isEmpty) {
@@ -309,15 +371,14 @@ class Machine(val host: String, val port: Int) {
         visitedSet += current
         interStack.push((current, true))
         val successors = cfg.getSuccessors(current)
-          for (succ <- successors) {
-            if (!visitedSet.contains(succ)) { //Since we already visited call return, should be fine here
-              interStack.push((succ, false))
-            }
+        for (succ <- successors) {
+          if (!visitedSet.contains(succ)) { // Since we already visited call return, should be fine here
+            interStack.push((succ, false))
           }
+        }
       }
     }
     resultStack.toList
   }
-
 
 }
