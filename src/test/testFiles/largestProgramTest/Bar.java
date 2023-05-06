@@ -8,21 +8,20 @@ public class Bar {
     }
 
     public int process(int a, Foo foo) {
-        // int b = a;
-        // int c = foo.a;
-        // int d = b + c;
-        // foo.a = d;
-        // if (d == 5) {
-        //     foo.a = 3;
-        // } else {
-        //     foo.a = 4;
-        // }
-        // for (int i =0; i < foo.a; i++) {
-        //     Foo foo2 = new Foo();
-        //     d = 5;
-        // }
-        // return d;
-        return a;
+        int b = a;
+        int c = foo.a;
+        int d = b + c;
+        foo.a = d;
+        if (d == 5) {
+            foo.a = 3;
+        } else {
+            foo.a = 4;
+        }
+        for (int i =0; i < foo.a; i++) {
+            Foo foo2 = new Foo();
+            d = 5;
+        }
+        return d;
     }
 
     public int add(int a1, int a2) {
@@ -50,7 +49,8 @@ public class Bar {
         bar = new Bar();
         bar.a = 2;
         int c = bar.add(a, b);
-        /* 
+        Foo foo = new Foo();
+
         a = a + c;
         b = b - c;
         c = a + b;
@@ -1074,7 +1074,6 @@ public class Bar {
         f = g - e;
         g = 2 * g + e;
         foo.a = foo.a + 1; 
-        */
         return g + 4;
     }
 }
