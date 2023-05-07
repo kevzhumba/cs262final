@@ -222,8 +222,16 @@ class Machine(val host: String, val port: Int) {
 
   def handleComputation() = {
     val rpo = reversePostOrder(cfg)
+
+
+
+
     breakable {
       while (true) {
+        val heapSize = Runtime.getRuntime().totalMemory()
+        val heapMaxSize = Runtime.getRuntime.maxMemory
+        val heapFreeSize = Runtime.getRuntime().freeMemory();
+        println(heapSize -heapFreeSize)
         if (!waiting.getAndSet(true)) {
           println("Converging")
           change = true

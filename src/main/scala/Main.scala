@@ -154,14 +154,6 @@ object Main extends App {
     getHeartbeatRequests(stubs)
     val results = stubs.map(stub => stub.shutDown(ShutDownRequest()).payload)
     val map = results.map(json => read[Map[Int, Constant]](json))
-    for (i <- map.indices) {
-      println(methods(i))
-      println(
-        map(i).map(p =>
-          (cfg(methods(i)).nodes.find(n => n.id == p._1).get, p._2)
-        )
-      )
-    }
   }
 
 }
