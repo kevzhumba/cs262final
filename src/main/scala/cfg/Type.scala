@@ -1,7 +1,3 @@
 package cfg
 
-trait Type extends Serializable{
-
-}
-
-
+trait Type extends Serializable {}

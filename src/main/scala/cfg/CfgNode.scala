@@ -8,7 +8,8 @@ import org.opalj.value.ValueInformation
 
 import scala.collection.immutable.List
 
-
+/** Class representing a node of a CFG
+  */
 trait CfgNode {
   def method: MethodDescription
 
@@ -17,15 +18,14 @@ trait CfgNode {
   def isEntry: Boolean = false
 
   def isExit: Boolean = false
-  
+
   def instructions: List[StmtNode]
-  
+
   def id: Int
 }
 
-case class BBNode(method: MethodDescription, instructions: List[StmtNode], id: Int) extends CfgNode 
-
-
-
-
-
+case class BBNode(
+    method: MethodDescription,
+    instructions: List[StmtNode],
+    id: Int
+) extends CfgNode

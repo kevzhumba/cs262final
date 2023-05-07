@@ -8,8 +8,12 @@ import org.opalj.value.ValueInformation
 
 import java.math.BigInteger
 
-case class CRNode(method: MethodDescription, instructions: List[StmtNode], id: Int) extends CfgNode {
+/** Class representing a call return node of a CFG
+  */
+case class CRNode(
+    method: MethodDescription,
+    instructions: List[StmtNode],
+    id: Int
+) extends CfgNode {
   override def isCallRet: Boolean = true
 }
-
-
