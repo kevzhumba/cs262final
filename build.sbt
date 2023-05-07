@@ -19,7 +19,7 @@ lazy val root = project
     version := "0.1.0-SNAPSHOT",
     resolvers += "scala-integration" at "https://scala-ci.typesafe.com/artifactory/scala-integration/",
     scalaVersion := scala3Version,
-    libraryDependencies += "org.scalameta" %% "munit" % "0.7.29" % Test,
+    // libraryDependencies += "org.scalameta" %% "munit" % "0.7.29" % Test,
     libraryDependencies += ("de.opal-project" %% "framework" % "5.0.0"),
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.1.0",
     libraryDependencies ++= Seq(
@@ -28,5 +28,4 @@ lazy val root = project
     ),
     libraryDependencies += "org.json4s" %% "json4s-native" % "4.0.6",
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % Test
-
   )
