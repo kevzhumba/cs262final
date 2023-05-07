@@ -8,12 +8,9 @@ import org.json4s.native.Serialization
 import org.json4s.native.Serialization.{read, write}
 import org.opalj.tac.cg.CFA_1_1_CallGraphKey
 import protos.dataflow.DataflowServerGrpc.DataflowServerBlockingStub
-import protos.dataflow.{
-  DataflowServerGrpc,
-  GetHeartbeatRequest,
-  ReceiveComputationUnitRequest,
-  ShutDownRequest
-}
+import protos.dataflow.{DataflowServerGrpc, GetHeartbeatRequest, ReceiveComputationUnitRequest, ShutDownRequest}
+
+import java.net.InetAddress
 
 object Main extends App {
   // Set up JSON serialization formats
@@ -69,6 +66,7 @@ object Main extends App {
       cfg: Map[MethodDescription, ExplodedCfg],
       workerMachines: List[(String, Int)]
   ): List[(Machine, ComputationUnit)] = {
+    val localHost: InetAddress  = InetAddress.getLocalHost
     val methods = cfg.keys.toList.sortBy(f => cfg(f).nodes.size).reverse
     var machines: List[(Machine, ComputationUnit)] = List()
     var nonLocalMachines: List[(Machine, ComputationUnit)] = List()
@@ -76,7 +74,7 @@ object Main extends App {
       if (m._2 < workerMachines.size) {
         (m._1, workerMachines(m._2)._1, workerMachines(m._2)._2)
       } else {
-        (m._1, "127.0.0.1", methods.indexOf(m._1) + 6000)
+        (m._1, localHost.getHostAddress, methods.indexOf(m._1) + 6000)
       }
     } )
 
@@ -89,7 +87,7 @@ object Main extends App {
         val machine = new Machine(host1, port1)
         nonLocalMachines = nonLocalMachines ++ List((machine, unit))
       } else {
-        val machine = new Machine("127.0.0.1", port)
+        val machine = new Machine(localHost.getHostAddress, port)
         machines = machines ++ List((machine, unit))
       }
     }
