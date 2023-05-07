@@ -10,5 +10,6 @@ case class Config(
                    out: File = new File("."),
                    worker: Boolean = false,
                    host: String = "",
-                   port: Int = 0
+                   port: Int = 0,
+                   machines: List[(String, Int)] = List()
                  )

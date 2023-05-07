@@ -64,7 +64,6 @@ object CfgProcessor {
               .map(a => {
                 val code1 = tac.get(a._1).get; (code1.pcToIndex(a._2), toMethodDescription(a._1, code1.params.parameters(0) eq null))
               })
-
           val callees: List[(Int, List[MethodDescription])] =
             callGraph
               .calleesOf(method)

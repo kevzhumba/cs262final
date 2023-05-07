@@ -46,7 +46,7 @@ object Main extends App {
         }
         println("Constructing CFG")
         val cfg = CfgProcessor.buildIntraproceduralCFG(callGraph, tac)
-        runMainMachine(cfg, List())
+        runMainMachine(cfg, value.machines)
       }
     case None =>
   }
@@ -66,26 +66,41 @@ object Main extends App {
     *   List of tuples of worker machines and their computation units
     */
   def startWorkerMachines(
-      cfg: Map[MethodDescription, ExplodedCfg]
+      cfg: Map[MethodDescription, ExplodedCfg],
+      workerMachines: List[(String, Int)]
   ): List[(Machine, ComputationUnit)] = {
-    val methods = cfg.keys.toList
+    val methods = cfg.keys.toList.sortBy(f => cfg(f).nodes.size).reverse
     var machines: List[(Machine, ComputationUnit)] = List()
-    val methodPorts =
-      methods.map(m => (m, "127.0.0.1", methods.indexOf(m) + 6000))
+    var nonLocalMachines: List[(Machine, ComputationUnit)] = List()
+    val methodPorts = methods.zipWithIndex.map(m => {
+      if (m._2 < workerMachines.size) {
+        (m._1, workerMachines(m._2)._1, workerMachines(m._2)._2)
+      } else {
+        (m._1, "127.0.0.1", methods.indexOf(m._1) + 6000)
+      }
+    } )
+
     for ((method, idx) <- methods.zipWithIndex) {
       val port = 6000 + idx
       val prog = cfg(method)
       val unit = ComputationUnit(prog, "constant", methodPorts)
-      val machine = new Machine("127.0.0.1", port)
-      machines = machines ++ List((machine, unit))
+      if (idx < workerMachines.size) {
+        val (host1, port1) = workerMachines(idx)
+        val machine = new Machine(host1, port1)
+        nonLocalMachines = nonLocalMachines ++ List((machine, unit))
+      } else {
+        val machine = new Machine("127.0.0.1", port)
+        machines = machines ++ List((machine, unit))
+      }
     }
+
     for ((machine, unit) <- machines) {
       val machineThread = new Thread {
         override def run(): Unit = machine.run()
       }
       machineThread.start()
     }
-    machines
+    nonLocalMachines ++ machines
   }
 
   /** Sends heartbeat requests to all worker machines until they have all
@@ -123,7 +138,8 @@ object Main extends App {
       otherMachines: List[(String, Int)]
   ): Unit = {
     val methods = cfg.keys.toList
-    val machines = startWorkerMachines(cfg)
+    println(otherMachines)
+    val machines = startWorkerMachines(cfg, otherMachines)
     var stubs: List[DataflowServerBlockingStub] = List()
     for ((machine, unit) <- machines) {
       val channel = NettyChannelBuilder

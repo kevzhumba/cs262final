@@ -32,6 +32,8 @@ object CliParser {
       opt[String]('h', "host")
         .action((h, c) => c.copy(host = h))
         .text("host"),
+      opt[Seq[(String, Int)]]('m', "machines")
+        .action((l, c) => c.copy(machines =  l.toList))
 
     )
   }
