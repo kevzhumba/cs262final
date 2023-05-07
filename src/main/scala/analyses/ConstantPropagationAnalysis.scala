@@ -1,14 +1,11 @@
 package analyses
 
-import analyses.ConstantPropagationAnalysis.evalExpr
 import cfg._
 import lattice.{AbstractObject, AllocationSite, Constant, ConstantOperator, Integer, Value}
 import org.json4s.ShortTypeHints
 import protos.dataflow.{DataflowServerGrpc, GetFieldRequest, PutFieldRequest}
 import org.json4s.native.Serialization
 import org.json4s.native.Serialization.{read, write}
-
-import java.io.ObjectInputStream.GetField
 
 object ConstantPropagationAnalysis extends Analysis {
   implicit val formats = Serialization.formats(
@@ -109,7 +106,7 @@ object ConstantPropagationAnalysis extends Analysis {
                 isCallRet: Boolean,
                 in: Constant,
                 stmtNode: StmtNode,
-                stubs: Map[MethodDescription, DataflowServerGrpc.DataflowServerBlockingStub]): ((Integer, AbstractObject), List[(Integer, AbstractObject)])= {
+                stubs: Map[MethodDescription, DataflowServerGrpc.DataflowServerBlockingStub] = Map()): ((Integer, AbstractObject), List[(Integer, AbstractObject)])= {
     expr match {
       case Null() => ((Integer(true, None), nullAlloc), null)
       case New(typ) => ((Integer(true, None), AbstractObject(Set(AllocationSite(stmtNode.method, stmtNode.idx, typ)))), null)

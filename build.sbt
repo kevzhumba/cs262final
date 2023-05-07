@@ -26,5 +26,7 @@ lazy val root = project
       "io.grpc" % "grpc-netty" % scalapb.compiler.Version.grpcJavaVersion,
       "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion
     ),
-    libraryDependencies += "org.json4s" %% "json4s-native" % "4.0.6"
+    libraryDependencies += "org.json4s" %% "json4s-native" % "4.0.6",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % Test
+
   )
