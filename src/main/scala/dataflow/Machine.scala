@@ -16,6 +16,15 @@ import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.Breaks.{break, breakable}
 
+/** This class represents a computation unit to be performed by a machine.
+  *
+  * @param cfg
+  *   The control flow graph.
+  * @param analysis
+  *   The name of the analysis to be performed.
+  * @param methods
+  *   The methods to be analyzed.
+  */
 case class ComputationUnit(
     cfg: ExplodedCfg,
     analysis: String,
@@ -23,8 +32,7 @@ case class ComputationUnit(
 )
 
 class Machine(val host: String, val port: Int) {
-  // TODO A
-
+  // Serialization formats
   implicit val formats = Serialization.formats(
     ShortTypeHints(
       List(
@@ -36,6 +44,7 @@ class Machine(val host: String, val port: Int) {
     )
   ) +
     new StmtSerializer() + new ExprSerializer() + new FieldTypeSerializer()
+
   // Machine state
   // Local state
   val in: ConcurrentMap[CfgNode, Value] = new ConcurrentHashMap()
@@ -46,8 +55,8 @@ class Machine(val host: String, val port: Int) {
     (AllocationSite, String),
     (lattice.Integer, AbstractObject)
   ] = new ConcurrentHashMap()
-  // Map from allocation site to reader? hmmmm that seems reasonable
 
+  // Machine states
   var method: MethodDescription = null
   var cfg: ExplodedCfg = null
   var change: Boolean = true
@@ -62,6 +71,8 @@ class Machine(val host: String, val port: Int) {
   val readers: ConcurrentMap[(AllocationSite, String), Set[MethodDescription]] =
     new ConcurrentHashMap()
 
+  /** Machine server implementing the proto definition.
+    */
   private class MachineServer
       extends protos.dataflow.DataflowServerGrpc.DataflowServer {
     override def getField(
@@ -81,6 +92,12 @@ class Machine(val host: String, val port: Int) {
       Future.successful(GetFieldResponse(json))
     }
 
+    /** This method is called by the client to set the value of a field.
+      *
+      * @param request
+      * @return
+      *   Acknowledgement of the request.
+      */
     override def putField(
         request: PutFieldRequest
     ): Future[PutFieldResponse] = {
@@ -111,12 +128,22 @@ class Machine(val host: String, val port: Int) {
       Future.successful(PutFieldResponse())
     }
 
+    /** This method is called by the client to send a heartbeat.
+      *
+      * @param request
+      * @return
+      */
     override def getHeartbeat(
         request: GetHeartbeatRequest
-    ): Future[GetHeartbeatResponse] = { // TODO make this more robust
+    ): Future[GetHeartbeatResponse] = {
       Future.successful(GetHeartbeatResponse(heartBeat.get()))
     }
 
+    /** This method is called by the client to get the caller information.
+      *
+      * @param request
+      * @return
+      */
     override def getCallerInfo(
         request: GetCallerInfoRequest
     ): Future[GetCallerInfoResponse] = {
@@ -127,12 +154,16 @@ class Machine(val host: String, val port: Int) {
       val latticeElem = valueOperator.getArgs(
         out.get(node)
       ) // this ensures only arguments are passed
-      // Need to filter args somehow or something? add this later.
       val json = write(latticeElem)
       Future.successful(GetCallerInfoResponse(json))
 
     }
 
+    /** This method is called by the client to receive a computation unit.
+      *
+      * @param request
+      * @return
+      */
     override def receiveComputationUnit(
         request: ReceiveComputationUnitRequest
     ): Future[ReceiveComputationUnitResponse] = {
@@ -143,6 +174,11 @@ class Machine(val host: String, val port: Int) {
       Future.successful(ReceiveComputationUnitResponse())
     }
 
+    /** This method is called by the client to get the callee information.
+      *
+      * @param request
+      * @return
+      */
     override def getCalleeInfo(
         request: GetCalleeInfoRequest
     ): Future[GetCalleeInfoResponse] = {
@@ -164,13 +200,18 @@ class Machine(val host: String, val port: Int) {
       Future.successful(SetTriggerResponse())
     }
 
+    /** This method is called by the client on termination.
+      *
+      * @param request
+      * @return
+      */
     override def shutDown(
         request: ShutDownRequest
     ): Future[ShutDownResponse] = {
       var map: Map[Int, Value] = Map()
       for (node <- cfg.nodes) {
         val lattice = out.get(node)
-        // map += (node.id -> lattice.asInstanceOf[Constant])
+        // map += (node.id -> lattice.asInstanceOf[Constant]) // Commented out now because this makes message size blow up
       }
       val json = write(map)
       endFlag.set(true)
@@ -178,6 +219,11 @@ class Machine(val host: String, val port: Int) {
     }
   }
 
+  /** This initializes the machine
+    *
+    * @param unit
+    *   Computation unit
+    */
   def initialize(unit: ComputationUnit): Unit = {
     for (method <- unit.methods) {
       val channel = NettyChannelBuilder
@@ -196,6 +242,8 @@ class Machine(val host: String, val port: Int) {
     method = cfg.entry.method
   }
 
+  /** This method runs the machine.
+    */
   def run(): Unit = {
     val serverThread = new Thread {
       override def run(): Unit = startServer()
@@ -208,6 +256,8 @@ class Machine(val host: String, val port: Int) {
     handleComputation()
   }
 
+  /** This method starts the server.
+    */
   def startServer(): Unit = {
     val server = NettyServerBuilder
       .forAddress(new InetSocketAddress(host, port))
@@ -258,6 +308,11 @@ class Machine(val host: String, val port: Int) {
     }
   }
 
+  /** This method runs the worklist algorithm on the cfg nodes until
+    * convergence.
+    *
+    * @param rpo
+    */
   def converge(rpo: List[CfgNode]) = {
     while (change) {
       change = false
@@ -274,9 +329,6 @@ class Machine(val host: String, val port: Int) {
           analysis.transfer(s, v, methodStubs)
         )
         if (!outFact.equals(out.get(node))) {
-//          println(node)
-//          println(out.get(node))
-//          println(outFact)
           out.put(node, outFact)
           change = true
           for (callee <- getCallees(node)) {
@@ -292,6 +344,11 @@ class Machine(val host: String, val port: Int) {
     }
   }
 
+  /** This method computes the in value for a call return node.
+    *
+    * @param node
+    *   call return node
+    */
   def computeInForCrNode(node: CRNode): Value = {
     val callNode =
       cfg
@@ -317,6 +374,11 @@ class Machine(val host: String, val port: Int) {
     )
   }
 
+  /** This method computes the in value for an exit node.
+    *
+    * @param node
+    *   exit node
+    */
   def computeInForExitNode(node: ExNode): Value = {
     var running: Option[Value] = None
     for (pred <- cfg.getPredecessors(node)) {
@@ -329,6 +391,11 @@ class Machine(val host: String, val port: Int) {
     running.get
   }
 
+  /** This method computes the in value for a basic block node.
+    *
+    * @param node
+    *   basic block node
+    */
   def computeInForBBNode(node: BBNode): Value = {
     var running: Option[Value] = None
     for (pred <- cfg.getPredecessors(node)) {
@@ -341,10 +408,14 @@ class Machine(val host: String, val port: Int) {
     running.get
   }
 
+  /** This method computes the in value for a basic block entry node.
+    *
+    * @param node
+    *   basic block entry node
+    */
   def computeInForBBEntryNode(node: BBEntryNode): Value = {
     var running: Option[Value] = None
     for (caller <- cfg._callers) {
-      // TODO add handling if we can't get the thing(If it goes down ig)
       // The callers should just give us argument information
       val req = GetCallerInfoRequest(caller._1)
       val stub = methodStubs(caller._2)
@@ -362,6 +433,11 @@ class Machine(val host: String, val port: Int) {
     }
   }
 
+  /** This method computes the reverse post order of the cfg.
+    *
+    * @param node
+    *   call return node
+    */
   def reversePostOrder(cfg: ExplodedCfg): List[CfgNode] = {
     val resultStack: mutable.Stack[CfgNode] = new mutable.Stack()
     val interStack: mutable.Stack[(CfgNode, Boolean)] = new mutable.Stack()

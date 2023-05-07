@@ -4,7 +4,8 @@ import cfg.{ExplodedCfg, MethodDescription, StmtNode}
 import lattice.{AbstractObject, Value}
 import protos.dataflow.DataflowServerGrpc
 
-
+/** Base trait for all analyses
+  */
 trait Analysis {
 
   def initialValue(cfg: ExplodedCfg): Value
@@ -15,8 +16,13 @@ trait Analysis {
 
   def defaultFieldValue: (lattice.Integer, AbstractObject)
 
-  def transfer(stmtNode: StmtNode,
-               in: Value,
-               stubs: Map[MethodDescription, DataflowServerGrpc.DataflowServerBlockingStub]): Value
+  def transfer(
+      stmtNode: StmtNode,
+      in: Value,
+      stubs: Map[
+        MethodDescription,
+        DataflowServerGrpc.DataflowServerBlockingStub
+      ]
+  ): Value
 
 }
